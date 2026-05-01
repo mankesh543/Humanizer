@@ -1,20 +1,28 @@
-const fs = require('fs/promises');
-const path = require('path');
-const { Document, Packer, Paragraph } = require('docx');
+const fs = require("fs/promises");
+const path = require("path");
+const { Document, Packer, Paragraph } = require("docx");
 
 function buildParagraphs(text) {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => new Paragraph(line));
+  const lines = text.split(/\r?\n/);
+  const paragraphs = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line) {
+      paragraphs.push(new Paragraph(line));
+    }
+  }
+
+  return paragraphs.length > 0 ? paragraphs : [new Paragraph("")];
 }
 
 async function writeDocxFile({ filePath, text }) {
+  const paragraphs = buildParagraphs(text);
+
   const document = new Document({
     sections: [
       {
-        children: buildParagraphs(text),
+        children: paragraphs,
       },
     ],
   });

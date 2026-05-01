@@ -1,30 +1,39 @@
-require('dotenv').config();
+require("dotenv").config();
 
-const express = require('express');
-const cors = require('cors');
-const fs = require('fs/promises');
-const path = require('path');
-const multer = require('multer');
-const crypto = require('crypto');
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs/promises");
+const path = require("path");
+const multer = require("multer");
+const crypto = require("crypto");
 
-const config = require('./config');
-const { extractTextFromFile } = require('./services/extractText');
-const { humanizeText } = require('./services/openrouter');
-const { writeDocxFile } = require('./services/exportDocx');
+const config = require("./config");
+const { extractTextFromFile } = require("./services/extractText");
+const { humanizeText } = require("./services/openrouter");
+const { writeDocxFile } = require("./services/exportDocx");
 
 const app = express();
 const jobs = new Map();
+const extractedTextCache = new Map();
 
 const upload = multer({
   dest: config.uploadDir,
   limits: {
     fileSize: 10 * 1024 * 1024,
   },
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, config.uploadDir);
+    },
+    filename: (req, file, cb) => {
+      cb(null, crypto.randomBytes(16).toString("hex"));
+    },
+  }),
   fileFilter: (req, file, cb) => {
     const extension = path.extname(file.originalname).toLowerCase();
-    const allowed = new Set(['.docx', '.pdf', '.txt']);
+    const allowed = new Set([".docx", ".pdf", ".txt"]);
     if (!allowed.has(extension)) {
-      cb(new Error('Only DOCX, PDF, and TXT files are supported.'));
+      cb(new Error("Only DOCX, PDF, and TXT files are supported."));
       return;
     }
 
@@ -33,8 +42,12 @@ const upload = multer({
 });
 
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
-
+app.use(express.json({ limit: "5mb" }));
+app.use((req, res, next) => {
+  req.setTimeout(300000);
+  res.setTimeout(300000);
+  next();
+});
 app.use((req, res, next) => {
   console.log(`[request] ${req.method} ${req.originalUrl}`);
   next();
@@ -57,9 +70,9 @@ function createJob({ sourceName, sourceType }) {
   const jobId = crypto.randomUUID();
   const job = {
     jobId,
-    status: 'queued',
-    stage: 'queued',
-    message: 'Waiting to start',
+    status: "queued",
+    stage: "queued",
+    message: "Waiting to start",
     sourceName,
     sourceType,
     currentChunk: 0,
@@ -83,16 +96,16 @@ async function runHumanizeJob({
 }) {
   try {
     setJobState(jobId, {
-      status: 'running',
-      stage: 'rewriting',
-      message: 'Preparing rewrite',
+      status: "running",
+      stage: "rewriting",
+      message: "Preparing rewrite",
     });
 
     console.log(`[rewrite] Job ${jobId} sending text to OpenRouter`);
     const rewrittenText = await humanizeText(originalText, {
       onProgress: ({ stage, currentChunk, totalChunks, message }) => {
         setJobState(jobId, {
-          status: 'running',
+          status: "running",
           stage,
           currentChunk,
           totalChunks,
@@ -103,9 +116,9 @@ async function runHumanizeJob({
     console.log(`[rewrite] Job ${jobId} OpenRouter returned rewritten text`);
 
     setJobState(jobId, {
-      status: 'running',
-      stage: 'exporting',
-      message: 'Building download version',
+      status: "running",
+      stage: "exporting",
+      message: "Building download version",
     });
 
     const downloadId = crypto.randomUUID();
@@ -120,9 +133,9 @@ async function runHumanizeJob({
     console.log(`[export] Job ${jobId} DOCX write complete`);
 
     setJobState(jobId, {
-      status: 'completed',
-      stage: 'completed',
-      message: 'Ready',
+      status: "completed",
+      stage: "completed",
+      message: "Ready",
       result: {
         fileName: sourceName,
         originalText,
@@ -134,10 +147,10 @@ async function runHumanizeJob({
   } catch (error) {
     console.error(`[humanize] Job ${jobId} failed:`, error.message);
     setJobState(jobId, {
-      status: 'failed',
-      stage: 'failed',
-      message: error.message || 'Failed to process the request.',
-      error: error.message || 'Failed to process the request.',
+      status: "failed",
+      stage: "failed",
+      message: error.message || "Failed to process the request.",
+      error: error.message || "Failed to process the request.",
     });
   } finally {
     if (cleanupPath) {
@@ -149,33 +162,59 @@ async function runHumanizeJob({
 
 async function queueFileJob(file, req, res) {
   const sourcePath = file.path;
-  console.log(`[upload] Received "${file.originalname}" (${file.size} bytes) at ${sourcePath}`);
+  console.log(
+    `[upload] Received "${file.originalname}" (${file.size} bytes) at ${sourcePath}`,
+  );
 
   const job = createJob({
     sourceName: file.originalname,
-    sourceType: 'file',
+    sourceType: "file",
   });
 
   try {
     setJobState(job.jobId, {
-      status: 'running',
-      stage: 'extracting',
-      message: 'Extracting text from file',
+      status: "running",
+      stage: "extracting",
+      message: "Extracting text from file",
     });
 
     console.log(`[extract] Job ${job.jobId} starting text extraction`);
-    const extractedText = (await extractTextFromFile(sourcePath, file.originalname)).trim();
-    console.log(`[extract] Job ${job.jobId} done. Extracted ${extractedText.length} characters`);
+
+    let extractedText;
+    const fileHash = crypto
+      .createHash("sha256")
+      .update(file.originalname + file.size)
+      .digest("hex");
+
+    if (extractedTextCache.has(fileHash)) {
+      console.log(`[cache] Using cached extraction for ${file.originalname}`);
+      extractedText = extractedTextCache.get(fileHash);
+    } else {
+      extractedText = (
+        await extractTextFromFile(sourcePath, file.originalname)
+      ).trim();
+      extractedTextCache.set(fileHash, extractedText);
+      if (extractedTextCache.size > 50) {
+        const firstKey = extractedTextCache.keys().next().value;
+        extractedTextCache.delete(firstKey);
+      }
+    }
+
+    console.log(
+      `[extract] Job ${job.jobId} done. Extracted ${extractedText.length} characters`,
+    );
 
     if (!extractedText) {
       setJobState(job.jobId, {
-        status: 'failed',
-        stage: 'failed',
-        message: 'The uploaded file did not contain readable text.',
-        error: 'The uploaded file did not contain readable text.',
+        status: "failed",
+        stage: "failed",
+        message: "The uploaded file did not contain readable text.",
+        error: "The uploaded file did not contain readable text.",
       });
     } else {
-      const outputBaseName = path.parse(file.originalname).name.replace(/\s+/g, '_');
+      const outputBaseName = path
+        .parse(file.originalname)
+        .name.replace(/\s+/g, "_");
       runHumanizeJob({
         jobId: job.jobId,
         originalText: extractedText,
@@ -191,92 +230,110 @@ async function queueFileJob(file, req, res) {
       message: jobs.get(job.jobId)?.message,
     });
   } catch (error) {
-    console.error(`[humanize] Job ${job.jobId} failed during extraction:`, error.message);
+    console.error(
+      `[humanize] Job ${job.jobId} failed during extraction:`,
+      error.message,
+    );
     setJobState(job.jobId, {
-      status: 'failed',
-      stage: 'failed',
-      message: error.message || 'Failed to extract text from file.',
-      error: error.message || 'Failed to extract text from file.',
+      status: "failed",
+      stage: "failed",
+      message: error.message || "Failed to extract text from file.",
+      error: error.message || "Failed to extract text from file.",
     });
     console.log(`[cleanup] Removing temp upload ${sourcePath}`);
     fs.unlink(sourcePath).catch(() => {});
     res.status(202).json({
       jobId: job.jobId,
-      status: 'failed',
+      status: "failed",
       message: jobs.get(job.jobId)?.message,
     });
   }
 }
 
-app.get('/health', (req, res) => {
+app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/humanize', upload.single('file'), async (req, res) => {
+app.post("/api/humanize", upload.single("file"), async (req, res) => {
   if (!req.file) {
-    res.status(400).json({ error: 'No file uploaded.' });
+    res.status(400).json({ error: "No file uploaded." });
     return;
   }
 
   await queueFileJob(req.file, req, res);
 });
 
-app.post('/api/humanize-text', async (req, res) => {
-  const rawText = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+app.post("/api/humanize-text", async (req, res) => {
+  const rawText =
+    typeof req.body?.text === "string" ? req.body.text.trim() : "";
   if (!rawText) {
-    res.status(400).json({ error: 'No text provided.' });
+    res.status(400).json({ error: "No text provided." });
     return;
   }
 
   const job = createJob({
-    sourceName: 'Pasted text',
-    sourceType: 'text',
+    sourceName: "Pasted text",
+    sourceType: "text",
   });
 
   console.log(`[text] Job ${job.jobId} received ${rawText.length} characters`);
   runHumanizeJob({
     jobId: job.jobId,
     originalText: rawText,
-    sourceName: 'Pasted text',
-    outputBaseName: 'pasted_text',
+    sourceName: "Pasted text",
+    outputBaseName: "pasted_text",
   });
 
   res.status(202).json({
     jobId: job.jobId,
-    status: 'queued',
-    message: 'Preparing rewrite',
+    status: "queued",
+    message: "Preparing rewrite",
   });
 });
 
-app.get('/api/jobs/:id', (req, res) => {
+app.get("/api/jobs/:id", (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) {
-    res.status(404).json({ error: 'Job not found.' });
+    res.status(404).json({ error: "Job not found." });
     return;
   }
 
   res.json(job);
 });
 
-app.get('/api/download/:id', async (req, res) => {
+app.get("/api/download/:id", async (req, res) => {
   const downloadId = req.params.id;
   const filePath = path.join(config.generatedDir, `${downloadId}.docx`);
-  const downloadName = req.query.name || 'humanized.docx';
+  const downloadName = req.query.name || "humanized.docx";
 
   try {
     console.log(`[download] Serving ${filePath}`);
     await fs.access(filePath);
-    res.download(filePath, downloadName);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${downloadName}"`,
+    );
+    res.setHeader("Cache-Control", "no-cache");
+    const fileStream = require("fs").createReadStream(filePath);
+    fileStream.pipe(res);
+    fileStream.on("error", (error) => {
+      console.error("[download] Stream error:", error.message);
+      res.status(500).json({ error: "Download failed." });
+    });
   } catch (error) {
-    console.error('[download] File not found:', filePath);
-    res.status(404).json({ error: 'Generated file not found.' });
+    console.error("[download] File not found:", filePath);
+    res.status(404).json({ error: "Generated file not found." });
   }
 });
 
 app.use((error, req, res, next) => {
-  console.error('[express] Middleware error:', error.message);
+  console.error("[express] Middleware error:", error.message);
   res.status(400).json({
-    error: error.message || 'Request failed.',
+    error: error.message || "Request failed.",
   });
 });
 
@@ -290,6 +347,6 @@ async function start() {
 }
 
 start().catch((error) => {
-  console.error('Failed to start backend:', error);
+  console.error("Failed to start backend:", error);
   process.exit(1);
 });
