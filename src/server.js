@@ -111,6 +111,7 @@ async function runHumanizeJob({
           currentChunk,
           totalChunks,
           message,
+          originalText, // Include original text so UI can show it during processing
         });
       },
     });
