@@ -11,6 +11,7 @@ const config = require("./config");
 const { extractTextFromFile } = require("./services/extractText");
 const { humanizeText } = require("./services/openrouter");
 const { writeDocxFile } = require("./services/exportDocx");
+const { writePdfFile } = require("./services/exportPdf");
 
 const app = express();
 const jobs = new Map();
@@ -122,15 +123,23 @@ async function runHumanizeJob({
     });
 
     const downloadId = crypto.randomUUID();
-    const outputFileName = `${outputBaseName}_humanized.docx`;
-    const outputFilePath = path.join(config.generatedDir, `${downloadId}.docx`);
+    const docxFileName = `${outputBaseName}_humanized.docx`;
+    const docxFilePath = path.join(config.generatedDir, `${downloadId}.docx`);
+    const pdfFileName = `${outputBaseName}_humanized.pdf`;
+    const pdfFilePath = path.join(config.generatedDir, `${downloadId}.pdf`);
 
-    console.log(`[export] Job ${jobId} writing DOCX to ${outputFilePath}`);
-    await writeDocxFile({
-      filePath: outputFilePath,
-      text: rewrittenText,
-    });
-    console.log(`[export] Job ${jobId} DOCX write complete`);
+    console.log(`[export] Job ${jobId} writing files...`);
+    await Promise.all([
+      writeDocxFile({
+        filePath: docxFilePath,
+        text: rewrittenText,
+      }),
+      writePdfFile({
+        filePath: pdfFilePath,
+        text: rewrittenText,
+      }),
+    ]);
+    console.log(`[export] Job ${jobId} export complete`);
 
     setJobState(jobId, {
       status: "completed",
@@ -140,8 +149,9 @@ async function runHumanizeJob({
         fileName: sourceName,
         originalText,
         rewrittenText,
-        outputFileName,
-        downloadUrl: `/api/download/${downloadId}?name=${encodeURIComponent(outputFileName)}`,
+        outputFileName: docxFileName,
+        downloadUrl: `/api/download/${downloadId}.docx?name=${encodeURIComponent(docxFileName)}`,
+        pdfDownloadUrl: `/api/download/${downloadId}.pdf?name=${encodeURIComponent(pdfFileName)}`,
       },
     });
   } catch (error) {
@@ -301,18 +311,24 @@ app.get("/api/jobs/:id", (req, res) => {
   res.json(job);
 });
 
-app.get("/api/download/:id", async (req, res) => {
-  const downloadId = req.params.id;
-  const filePath = path.join(config.generatedDir, `${downloadId}.docx`);
-  const downloadName = req.query.name || "humanized.docx";
+app.get("/api/download/:file", async (req, res) => {
+  const fileName = req.params.file;
+  const filePath = path.join(config.generatedDir, fileName);
+  const downloadName = req.query.name || fileName;
+  const extension = path.extname(fileName).toLowerCase();
 
   try {
     console.log(`[download] Serving ${filePath}`);
     await fs.access(filePath);
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    );
+
+    if (extension === ".pdf") {
+      res.setHeader("Content-Type", "application/pdf");
+    } else {
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+    }
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${downloadName}"`,
