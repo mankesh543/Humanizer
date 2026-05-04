@@ -22,7 +22,7 @@ A. SHIFT VOICE: convert generic third-person claims into direct second-person ad
    AI: "A photography blog can evoke emotion by weaving a story."
    Human: "If you want your photo blog to actually move someone, the story has to come first."
 
-B. BREAK THE BALANCED RHYTHM: AI writes sentences with similar lengths. Real people don't. Mix one short sentence (3-7 words) with one longer one (18+ words) in every paragraph. Make adjacent sentences differ in length sharply at least once.
+B. BREAK THE BALANCED RHYTHM (HARD REQUIREMENT): AI writes sentences with similar lengths. Real people don't. In every paragraph you produce: (i) at least one sentence must be under 6 words, (ii) at least one must be 18+ words, (iii) at least one pair of adjacent sentences must differ in length by 10+ words. Detectors measure this variance directly. Hitting these targets is non-negotiable.
 
 C. DESTROY PARALLEL LISTS: AI loves "X, Y, and Z" patterns. Break them. Pick the most concrete item and lead with it. Drop or restructure the others.
    AI: "...by weaving a story, providing context, and focusing on feelings."
@@ -65,6 +65,26 @@ Return only the rewritten text. No intro, no notes, no quotes around it. Do not 
 
 const maxChunkLength = 3500;
 const maxConcurrentRequests = 4;
+
+const focusAngles = [
+  "EXTRA EMPHASIS THIS REWRITE: maximize sentence-length variance. Force at least one sentence under 5 words and at least one over 22 words. Place them so the rhythm jumps.",
+  "EXTRA EMPHASIS THIS REWRITE: inject exactly one short personal hedge somewhere natural ('honestly', 'I think', 'to me', 'in my experience'). Make it feel offhand, not performative.",
+  "EXTRA EMPHASIS THIS REWRITE: start at least two sentences with a conjunction (And, But, So, Plus). Make the writer sound like they're thinking out loud, not delivering a polished essay.",
+  "EXTRA EMPHASIS THIS REWRITE: include one short parenthetical aside that reads like a spontaneous side comment. Keep it casual and brief.",
+  "EXTRA EMPHASIS THIS REWRITE: do not end with a summary sentence. End on a specific concrete detail, a fragment, or a trailing thought. The closer should feel abrupt, not tidy.",
+  "EXTRA EMPHASIS THIS REWRITE: include one rhetorical question somewhere natural. Use it to break the rhythm, not to introduce a new idea.",
+  "EXTRA EMPHASIS THIS REWRITE: increase fragment usage. Include at least two sentence fragments (2-5 words, no main verb), placed where they break a smooth rhythm.",
+  "EXTRA EMPHASIS THIS REWRITE: vary how sentences begin. Across the whole output, the first word of each sentence should rarely repeat. No more than one sentence may start with 'The', 'It', 'You', or 'A'.",
+];
+
+function pickFocusAngle() {
+  return focusAngles[Math.floor(Math.random() * focusAngles.length)];
+}
+
+function jitterTemperature(base) {
+  const jitter = (Math.random() - 0.5) * 0.14;
+  return Math.max(0.85, Math.min(1.1, base + jitter));
+}
 
 function chunkText(inputText) {
   const normalized = inputText.replace(/\r\n/g, "\n").trim();
@@ -163,8 +183,11 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
     throw new Error("Missing OPENROUTER_API_KEY in backend/.env");
   }
 
+  const focusAngle = pickFocusAngle();
+  const temperature = jitterTemperature(1.0);
+
   console.log(
-    `[openrouter] Starting chunk ${chunkIndex}/${totalChunks} with model "${openrouterModel}" for ${chunkTextValue.length} characters`,
+    `[openrouter] Starting chunk ${chunkIndex}/${totalChunks} with model "${openrouterModel}" for ${chunkTextValue.length} characters, temp ${temperature.toFixed(2)}`,
   );
 
   const controller = new AbortController();
@@ -184,7 +207,7 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
       body: JSON.stringify({
         model: openrouterModel,
         stream: false,
-        temperature: 1.0,
+        temperature,
         top_p: 0.95,
         frequency_penalty: 0.8,
         presence_penalty: 0.6,
@@ -192,7 +215,7 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
         messages: [
           {
             role: "system",
-            content: rewriteSystemPrompt,
+            content: `${rewriteSystemPrompt}\n\n---\n${focusAngle}`,
           },
           {
             role: "user",
