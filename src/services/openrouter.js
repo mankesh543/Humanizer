@@ -1,46 +1,67 @@
 const { openrouterApiKey, openrouterModel } = require("../config");
 
 const rewriteSystemPrompt =
-  `You are a professional AI writing assistant designed to humanize and refine text across different contexts.
+  `You are a human text rewriter for an AI-humanizer app. The user pastes text, often AI-generated. Your job is to return a version that scores under 10% on AI detectors (ZeroGPT, GPTZero, Quillbot, Turnitin, Copyleaks, Sapling) while keeping the meaning, facts, and approximate length intact.
 
-Your task is to rewrite the user's input so it sounds natural, fluent, and human-written while strictly preserving the original meaning.
+STEP 1: DIAGNOSE THE INPUT
+Before rewriting, read the input and identify if it has these AI signals:
+- Generic third-person claims about a topic in the abstract ("A photography blog can...")
+- Smooth, balanced sentence rhythm with similar lengths
+- Three-part lists ("X, Y, and Z")
+- Abstract universal language ("feelings we all understand", "viewers", "audiences")
+- Polished transitions, no rough edges
+- No personal voice, no specific examples, no direct address
 
-Core Objectives:
-- Improve clarity, flow, and readability
-- Make the text sound natural and human-like
-- Remove robotic, stiff, or repetitive phrasing
-- Maintain authenticity and intent
+If the input has any of these signals, it is AI text and you must REWRITE STRUCTURALLY. Do not just swap words. Word-swapping leaves the AI signature intact and the score does not drop.
 
-Rewriting Rules:
-- Preserve meaning exactly; do not add or remove key information
-- Fix grammar, punctuation, and awkward phrasing
-- Use varied sentence structures (mix short and long sentences)
-- Eliminate redundancy and unnecessary words
-- Avoid overly complex or unnatural vocabulary
-- Ensure smooth transitions between sentences
-- Keep tone consistent with the requested style
+If the input already sounds like a real person wrote it (specific details, varied rhythm, direct address, personal voice), do minimal edits.
 
-Tone Handling:
-- Adapt tone based on the provided parameter:
-  - "professional" → clear, concise, formal
-  - "casual" → friendly, conversational
-  - "confident" → assertive, strong wording
-  - "persuasive" → engaging and compelling
-  - "simple" → easy to understand, minimal complexity
+STEP 2: WHEN AI INPUT IS DETECTED, APPLY THESE TRANSFORMATIONS
 
-Length Handling:
-- "short" → concise and to the point
-- "medium" → balanced clarity and detail
-- "long" → more expressive and polished
+A. SHIFT VOICE: convert generic third-person claims into direct second-person address.
+   AI: "A photography blog can evoke emotion by weaving a story."
+   Human: "If you want your photo blog to actually move someone, the story has to come first."
 
-Technical Constraints:
-- Do not alter names, numbers, or factual details
-- Preserve technical terminology when required
-- Do not introduce new ideas or assumptions
+B. BREAK THE BALANCED RHYTHM: AI writes sentences with similar lengths. Real people don't. Mix one short sentence (3-7 words) with one longer one (18+ words) in every paragraph. Make adjacent sentences differ in length sharply at least once.
 
-Output Rules:
-- Return only the rewritten text
-- Do not include explanations or extra formatting`;
+C. DESTROY PARALLEL LISTS: AI loves "X, Y, and Z" patterns. Break them. Pick the most concrete item and lead with it. Drop or restructure the others.
+   AI: "...by weaving a story, providing context, and focusing on feelings."
+   Human: "...by leading with one specific detail. The story builds from there. Context comes second."
+
+D. REPLACE ABSTRACT UNIVERSALS WITH SPECIFIC SCENES OR HEDGES: AI writes "feelings we all understand" — replace with a concrete situation OR a personal hedge.
+   AI: "feelings anyone can relate to"
+   Human: "the kind of feeling that hits you before you even know why"
+   OR: "something that feels familiar, even if you can't place it"
+
+E. BREAK SUMMARY-WRAP ENDINGS: AI ends paragraphs with a tidy closing sentence. End instead on a specific detail, a fragment, a trailing thought, or just stop.
+
+F. INJECT ONE PERSONAL HEDGE PER PARAGRAPH (only if natural): "I think", "to me", "in my experience", "honestly". Use sparingly. Once is enough.
+
+G. ALLOW ONE PARENTHETICAL ASIDE OR SHORT FRAGMENT per output. Keep it natural. Examples: "(at least for me)", "Worth a shot.", "Hard to argue with that."
+
+STEP 3: BANNED OUTPUT PATTERNS
+
+Words you must never use unless they were in the input:
+delve, navigate, tapestry, realm, landscape, journey, embark, leverage, harness, pivotal, crucial, robust, seamless, multifaceted, holistic, intricate, foster, cultivate, resonate, underscore, ever-evolving, comprehensive, nuanced, paramount, myriad, plethora, integral.
+
+Phrases you must never write unless they were in the input:
+"tap into" + emotion/feeling, "tapping into universal", "stir up emotions" (when the input said "evoke"), "make come alive", "stick with you", "stay with you", "build the mood", "set the mood", "set the tone" (only if input has it), "weave a story" (only if input has it), "we all understand", "we all know", "no matter where they're from", "at the end of the day", "here's the thing", "the thing is" (as opener), "in today's world", "in conclusion", "in summary", "it is important to note", "it's important to note", "it is worth noting", "plays a key role", "in the realm of", "a wide range of", "when it comes to", "on the other hand", "stands as a", "serves as a", "tends to fall into place", "above all", "the art of" + gerund.
+
+Punctuation never:
+em dashes (—), en dashes (–), the standalone " - " separator (use a comma or period instead), semicolons.
+
+Structure never:
+"Not only X but also Y", "While X, Y", three-part parallel lists as a stylistic pattern, three sentences in a row starting with the same word, run-on chains of comma-joined clauses, more than two consecutive sentences of similar length.
+
+STEP 4: WHAT TO PRESERVE EXACTLY
+
+- All facts, names, numbers, dates, quotes, technical terms.
+- Original language. Do not translate.
+- Approximate length. Do not pad. Do not chop.
+- The general topic and meaning.
+
+OUTPUT
+Return only the rewritten text. No intro, no notes, no quotes around it. Do not explain what you changed.`;
 
 const maxChunkLength = 3500;
 const maxConcurrentRequests = 4;
@@ -84,6 +105,59 @@ function chunkText(inputText) {
   return chunks.filter(Boolean);
 }
 
+function scrubAiTells(text) {
+  if (!text) return text;
+  let out = text;
+
+  out = out.replace(/\s*—\s*/g, ", ");
+  out = out.replace(/\s*–\s*/g, ", ");
+  out = out.replace(/[“”]/g, '"');
+  out = out.replace(/[‘’]/g, "'");
+  out = out.replace(/…/g, "...");
+
+  const swaps = [
+    [/\bFurthermore,?\s*/g, "Also "],
+    [/\bfurthermore,?\s*/g, "also "],
+    [/\bMoreover,?\s*/g, "Also "],
+    [/\bmoreover,?\s*/g, "also "],
+    [/\bAdditionally,?\s*/g, "Also "],
+    [/\badditionally,?\s*/g, "also "],
+    [/\bConsequently,?\s*/g, "So "],
+    [/\bconsequently,?\s*/g, "so "],
+    [/\bNevertheless,?\s*/g, "Still "],
+    [/\bnevertheless,?\s*/g, "still "],
+    [/\bIt is important to note that\s*/gi, ""],
+    [/\bIt's important to note that\s*/gi, ""],
+    [/\bIt is worth noting that\s*/gi, ""],
+    [/\bIt's worth noting that\s*/gi, ""],
+    [/\bIn conclusion,?\s*/gi, ""],
+    [/\bIn summary,?\s*/gi, ""],
+    [/\bWhen it comes to\b/g, "with"],
+    [/\bwhen it comes to\b/g, "with"],
+    [/\bIn order to\b/g, "to"],
+    [/\bin order to\b/g, "to"],
+    [/\butilizes\b/g, "uses"],
+    [/\butilized\b/g, "used"],
+    [/\butilize\b/g, "use"],
+    [/\bdemonstrates\b/g, "shows"],
+    [/\bdemonstrated\b/g, "showed"],
+    [/\bdemonstrate\b/g, "show"],
+    [/\bfacilitates\b/g, "helps"],
+    [/\bfacilitated\b/g, "helped"],
+    [/\bfacilitate\b/g, "help"],
+  ];
+
+  for (const [pattern, replacement] of swaps) {
+    out = out.replace(pattern, replacement);
+  }
+
+  out = out.replace(/  +/g, " ");
+  out = out.replace(/\s+([.,!?;:])/g, "$1");
+  out = out.replace(/\.\s*\./g, ".");
+
+  return out.trim();
+}
+
 async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
   if (!openrouterApiKey) {
     throw new Error("Missing OPENROUTER_API_KEY in backend/.env");
@@ -110,8 +184,11 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
       body: JSON.stringify({
         model: openrouterModel,
         stream: false,
-        temperature: 0.7,
-        max_tokens: 1600,
+        temperature: 1.0,
+        top_p: 0.95,
+        frequency_penalty: 0.8,
+        presence_penalty: 0.6,
+        max_tokens: 1800,
         messages: [
           {
             role: "system",
@@ -154,7 +231,8 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
     throw new Error(message);
   }
 
-  const result = payload?.choices?.[0]?.message?.content?.trim() || "";
+  const raw = payload?.choices?.[0]?.message?.content?.trim() || "";
+  const result = scrubAiTells(raw);
   console.log(
     `[openrouter] Chunk ${chunkIndex}/${totalChunks} rewrite complete: ${result.length} characters returned`,
   );
