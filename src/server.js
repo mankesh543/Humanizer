@@ -11,6 +11,7 @@ const config = require("./config");
 const { extractTextFromFile } = require("./services/extractText");
 const { humanizeText } = require("./services/openrouter");
 const { checkGrammar } = require("./services/grammar");
+const { saveCorrection } = require("./services/learnedDictionary");
 const { writeDocxFile } = require("./services/exportDocx");
 const { writePdfFile } = require("./services/exportPdf");
 
@@ -320,6 +321,19 @@ app.post("/api/grammar-check", async (req, res) => {
     console.error("[grammar] endpoint failed:", error.message);
     res.status(200).json({ issues: [] });
   }
+});
+
+app.post("/api/grammar/learn", (req, res) => {
+  const original =
+    typeof req.body?.original === "string" ? req.body.original : "";
+  const suggestion =
+    typeof req.body?.suggestion === "string" ? req.body.suggestion : "";
+  if (!original.trim() || !suggestion.trim()) {
+    res.status(400).json({ error: "original and suggestion required" });
+    return;
+  }
+  const ok = saveCorrection(original, suggestion);
+  res.status(200).json({ saved: ok });
 });
 
 app.get("/api/jobs/:id", (req, res) => {

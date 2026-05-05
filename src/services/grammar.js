@@ -1,24 +1,51 @@
 const { openrouterApiKey, openrouterModel } = require("../config");
+const { loadDict } = require("./learnedDictionary");
 
-const grammarSystemPrompt = `You are a strict grammar and spelling checker. Find errors in the user's text and return JSON.
+const grammarSystemPromptBase = `You are a precise grammar and spelling checker. Return JSON listing CLEAR errors. Do not over-flag stylistic choices, but DO flag mechanical/unambiguous errors every time.
 
-Rules:
-- Detect: spelling mistakes, grammar errors (subject-verb agreement, tense, missing articles, wrong word forms), and capitalization errors (start of sentence, the pronoun "I", proper nouns).
-- Do NOT make stylistic suggestions. Do NOT replace casual phrasing. Do NOT change passive to active. Do NOT polish tone.
-- Do NOT flag deliberate informal usage. Contractions are fine. Sentence fragments are fine. Casual openers are fine.
-- Only flag ACTUAL errors a careful editor would correct.
+ALWAYS FLAG (these are mechanical — never skip them):
+- Sentence-start capitalization: the very first letter of every sentence MUST be uppercase. Lowercase first letter = error, always.
+- The pronoun "I" as a standalone word: must be uppercase "I". Lowercase "i" used as a pronoun = error, always.
+- Clear proper nouns: personal names, place names (e.g., "Patna", "London", common first/last names) when written lowercase.
 
-Output JSON in this exact shape:
-{"issues": [{"original": "<exact wrong substring>", "suggestion": "<corrected version>", "type": "spelling" | "grammar" | "capitalization"}]}
+DETECT WHEN CLEARLY WRONG:
+- Spelling typos: "wnat" -> "want", "tomorow" -> "tomorrow", "alot" -> "a lot".
+- Run-on words: "ismankesh" -> "is mankesh", "thequickbrown" -> "the quick brown".
+- Wrong word forms with clear context: their/there/they're, your/you're, its/it's, then/than.
+- Subject-verb agreement when clearly wrong ("he go" -> "he goes").
+- Same name spelled two ways in this text: pick the version that appears first/most.
+- Run-on sentences and comma splices ONLY when both clauses are clearly independent and the fix is obvious. Use the smallest possible span.
 
-For each issue:
-- "original" MUST be an exact verbatim substring of the input text. Keep it as short as possible — just the wrong word or short phrase, not the whole sentence.
-- "suggestion" is what the user should replace the original with.
-- "type" is one of "spelling", "grammar", or "capitalization".
+DO NOT FLAG:
+- Stylistic choices, casual phrasing, contractions, fragments, casual sentence openers (these stay flagged for cap only — "yeah" at sentence start IS still "Yeah", but the choice to BE casual stays).
+- Word choice or tone.
+- Things that COULD be slang, brand names, or made-up words. Stay safe — skip those.
+- Grammar judgment calls where you are not 90%+ confident. Skip them.
 
-If the text has no errors, return {"issues": []}.
+OUTPUT JSON:
+{"issues": [{"original": "<exact substring>", "suggestion": "<fix>", "type": "spelling" | "grammar" | "capitalization"}]}
 
-Return only the JSON. No commentary, no markdown.`;
+- "original" MUST be a verbatim substring of the input. Keep it as short as makes sense (single word for typos; clause-only for sentence-level fixes — never the whole sentence).
+- No duplicates. If the same word appears multiple times wrong, list it once.
+- If no clear errors, return {"issues": []}.
+- Return only JSON. No commentary, no markdown.`;
+
+function buildSystemPrompt() {
+  const { corrections } = loadDict();
+  const entries = Object.entries(corrections || {});
+  if (entries.length === 0) {
+    return grammarSystemPromptBase;
+  }
+  const recent = entries.slice(-50);
+  const learnedSection = `\n\nLEARNED CORRECTIONS (use these when the EXACT "from" word appears):
+${recent.map(([orig, sug]) => `- "${orig}" -> "${sug}"`).join("\n")}
+
+Rules for using these:
+1. If a "from" word appears in the input AS AN EXACT MATCH, suggest the corresponding "to" value as the fix. Do NOT also suggest a different correction (like capitalization) for the same word — the dictionary entry takes priority.
+2. Do NOT apply these to similar-but-different words. "mukesh" is NOT "munkesh" — leave it alone.
+3. If a "to" value appears in the input, that word is known-good — do NOT flag it as an error.`;
+  return grammarSystemPromptBase + learnedSection;
+}
 
 async function checkGrammar(text) {
   if (!openrouterApiKey) {
@@ -47,11 +74,11 @@ async function checkGrammar(text) {
         body: JSON.stringify({
           model: openrouterModel,
           stream: false,
-          temperature: 0.1,
-          max_tokens: 800,
+          temperature: 0.0,
+          max_tokens: 500,
           response_format: { type: "json_object" },
           messages: [
-            { role: "system", content: grammarSystemPrompt },
+            { role: "system", content: buildSystemPrompt() },
             { role: "user", content: trimmed },
           ],
         }),
