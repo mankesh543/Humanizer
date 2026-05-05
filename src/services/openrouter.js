@@ -57,7 +57,8 @@ STEP 4: WHAT TO PRESERVE EXACTLY
 
 - All facts, names, numbers, dates, quotes, technical terms.
 - Original language. Do not translate.
-- Approximate length. Do not pad. Do not chop.
+- LENGTH IS A HARD CAP. Output word count must stay within ±20% of input word count. If input is 9 words, output must be 7-11 words. Never expand a short sentence into a paragraph.
+- Do NOT add new ideas, new sentences, new context, new examples, new metaphors, or new details that the input did not contain. If the input says "I want to go to Patna", do not add backstory about planning, travel, or accommodation.
 - The general topic and meaning.
 
 OUTPUT
