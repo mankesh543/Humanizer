@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const config = require("./config");
 const { extractTextFromFile } = require("./services/extractText");
 const { humanizeText } = require("./services/openrouter");
+const { checkGrammar } = require("./services/grammar");
 const { writeDocxFile } = require("./services/exportDocx");
 const { writePdfFile } = require("./services/exportPdf");
 
@@ -300,6 +301,25 @@ app.post("/api/humanize-text", async (req, res) => {
     status: "queued",
     message: "Preparing rewrite",
   });
+});
+
+app.post("/api/grammar-check", async (req, res) => {
+  const text = typeof req.body?.text === "string" ? req.body.text : "";
+  if (!text.trim()) {
+    res.status(200).json({ issues: [] });
+    return;
+  }
+  if (text.length > 5000) {
+    res.status(200).json({ issues: [] });
+    return;
+  }
+  try {
+    const issues = await checkGrammar(text);
+    res.status(200).json({ issues });
+  } catch (error) {
+    console.error("[grammar] endpoint failed:", error.message);
+    res.status(200).json({ issues: [] });
+  }
 });
 
 app.get("/api/jobs/:id", (req, res) => {
