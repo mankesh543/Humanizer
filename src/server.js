@@ -56,6 +56,13 @@ app.use((req, res, next) => {
   next();
 });
 
+function extractUserApiKey(req) {
+  const raw = req.get("X-User-OpenRouter-Key");
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function setJobState(jobId, patch) {
   const current = jobs.get(jobId);
   if (!current) {
@@ -96,6 +103,7 @@ async function runHumanizeJob({
   sourceName,
   outputBaseName,
   cleanupPath,
+  userApiKey,
 }) {
   try {
     setJobState(jobId, {
@@ -104,8 +112,11 @@ async function runHumanizeJob({
       message: "Preparing rewrite",
     });
 
-    console.log(`[rewrite] Job ${jobId} sending text to OpenRouter`);
+    console.log(
+      `[rewrite] Job ${jobId} sending text to OpenRouter (key=${userApiKey ? "user" : "server"})`,
+    );
     const rewrittenText = await humanizeText(originalText, {
+      userApiKey,
       onProgress: ({ stage, currentChunk, totalChunks, message }) => {
         setJobState(jobId, {
           status: "running",
@@ -175,6 +186,7 @@ async function runHumanizeJob({
 
 async function queueFileJob(file, req, res) {
   const sourcePath = file.path;
+  const userApiKey = extractUserApiKey(req);
   console.log(
     `[upload] Received "${file.originalname}" (${file.size} bytes) at ${sourcePath}`,
   );
@@ -234,6 +246,7 @@ async function queueFileJob(file, req, res) {
         sourceName: file.originalname,
         outputBaseName,
         cleanupPath: sourcePath,
+        userApiKey,
       });
     }
 
@@ -284,6 +297,8 @@ app.post("/api/humanize-text", async (req, res) => {
     return;
   }
 
+  const userApiKey = extractUserApiKey(req);
+
   const job = createJob({
     sourceName: "Pasted text",
     sourceType: "text",
@@ -295,6 +310,7 @@ app.post("/api/humanize-text", async (req, res) => {
     originalText: rawText,
     sourceName: "Pasted text",
     outputBaseName: "pasted_text",
+    userApiKey,
   });
 
   res.status(202).json({

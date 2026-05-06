@@ -183,16 +183,20 @@ function scrubAiTells(text) {
   return out.trim();
 }
 
-async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
-  if (!openrouterApiKey) {
-    throw new Error("Missing OPENROUTER_API_KEY in backend/.env");
+async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks, userApiKey) {
+  const effectiveKey = userApiKey || openrouterApiKey;
+  if (!effectiveKey) {
+    throw new Error(
+      "No OpenRouter key available. Set OPENROUTER_API_KEY in backend/.env or save a key in the app's Settings screen.",
+    );
   }
 
   const focusAngle = pickFocusAngle();
   const temperature = jitterTemperature(1.0);
+  const keySource = userApiKey ? "user" : "server";
 
   console.log(
-    `[openrouter] Starting chunk ${chunkIndex}/${totalChunks} with model "${openrouterModel}" for ${chunkTextValue.length} characters, temp ${temperature.toFixed(2)}`,
+    `[openrouter] Starting chunk ${chunkIndex}/${totalChunks} with model "${openrouterModel}" for ${chunkTextValue.length} characters, temp ${temperature.toFixed(2)}, key=${keySource}`,
   );
 
   const controller = new AbortController();
@@ -205,7 +209,7 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${openrouterApiKey}`,
+        Authorization: `Bearer ${effectiveKey}`,
         "HTTP-Referer": "http://localhost:3000",
         "X-Title": "Huminzer",
       },
@@ -268,7 +272,7 @@ async function rewriteChunk(chunkTextValue, chunkIndex, totalChunks) {
 }
 
 async function humanizeText(inputText, options = {}) {
-  const { onProgress } = options;
+  const { onProgress, userApiKey } = options;
   const chunks = chunkText(inputText);
   console.log(`[openrouter] Split input into ${chunks.length} chunk(s)`);
 
@@ -290,6 +294,7 @@ async function humanizeText(inputText, options = {}) {
         chunks[index],
         index + 1,
         chunks.length,
+        userApiKey,
       );
       rewrittenChunks[index] = rewrittenChunk;
       inProgressCount.count--;
