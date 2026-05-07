@@ -63,6 +63,48 @@ function extractUserApiKey(req) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function parseVoice(raw) {
+  if (raw == null) return null;
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch (_) {
+      return null;
+    }
+  }
+  if (!value || typeof value !== "object") return null;
+  const allowedPresets = new Set([
+    "casual",
+    "editorial",
+    "academic",
+    "marketing",
+    "narrative",
+    "technical",
+  ]);
+  const allowedLengths = new Set(["shorter", "same", "longer"]);
+  const out = {};
+  if (typeof value.preset === "string" && allowedPresets.has(value.preset)) {
+    out.preset = value.preset;
+  }
+  if (typeof value.strength === "number" && Number.isFinite(value.strength)) {
+    out.strength = Math.max(0, Math.min(1, value.strength));
+  }
+  if (
+    typeof value.readingLevel === "number" &&
+    Number.isInteger(value.readingLevel)
+  ) {
+    out.readingLevel = Math.max(5, Math.min(16, value.readingLevel));
+  }
+  if (typeof value.length === "string" && allowedLengths.has(value.length)) {
+    out.length = value.length;
+  }
+  if (typeof value.customInstructions === "string") {
+    out.customInstructions = value.customInstructions.slice(0, 500);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 function setJobState(jobId, patch) {
   const current = jobs.get(jobId);
   if (!current) {
@@ -104,6 +146,7 @@ async function runHumanizeJob({
   outputBaseName,
   cleanupPath,
   userApiKey,
+  voice,
 }) {
   try {
     setJobState(jobId, {
@@ -117,6 +160,7 @@ async function runHumanizeJob({
     );
     const rewrittenText = await humanizeText(originalText, {
       userApiKey,
+      voice,
       onProgress: ({ stage, currentChunk, totalChunks, message }) => {
         setJobState(jobId, {
           status: "running",
@@ -187,6 +231,7 @@ async function runHumanizeJob({
 async function queueFileJob(file, req, res) {
   const sourcePath = file.path;
   const userApiKey = extractUserApiKey(req);
+  const voice = parseVoice(req.body?.voice);
   console.log(
     `[upload] Received "${file.originalname}" (${file.size} bytes) at ${sourcePath}`,
   );
@@ -247,6 +292,7 @@ async function queueFileJob(file, req, res) {
         outputBaseName,
         cleanupPath: sourcePath,
         userApiKey,
+        voice,
       });
     }
 
@@ -298,6 +344,7 @@ app.post("/api/humanize-text", async (req, res) => {
   }
 
   const userApiKey = extractUserApiKey(req);
+  const voice = parseVoice(req.body?.voice);
 
   const job = createJob({
     sourceName: "Pasted text",
@@ -311,6 +358,7 @@ app.post("/api/humanize-text", async (req, res) => {
     sourceName: "Pasted text",
     outputBaseName: "pasted_text",
     userApiKey,
+    voice,
   });
 
   res.status(202).json({
