@@ -1,0 +1,10 @@
+node_modules
+uploads
+generated
+.env
+.git
+.gitignore
+.dart_tool
+.idea
+.vscode
+*.log
