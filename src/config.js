@@ -8,4 +8,7 @@ module.exports = {
   openrouterModel: process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat',
   uploadDir: path.join(rootDir, 'uploads'),
   generatedDir: path.join(rootDir, 'generated'),
+  mongodbUri: process.env.MONGODB_URI || '',
+  jwtSecret: process.env.JWT_SECRET || '',
+  jwtExpiry: process.env.JWT_EXPIRY || '30d',
 };

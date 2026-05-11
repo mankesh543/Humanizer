@@ -53,7 +53,7 @@ G. ALLOW ONE PARENTHETICAL ASIDE OR SHORT FRAGMENT per output. Keep it natural. 
 
 H. CONTRACTIONS ARE MANDATORY where they fit. "I am" → "I'm", "do not" → "don't", "it is" → "it's", "you are" → "you're", "cannot" → "can't", "will not" → "won't", "would have" → "would've". Uncontracted forms in casual prose are a strong AI tell.
 
-I. LEXICAL SURPRISE: in each paragraph, pick at least one spot where AI would default to the safe common word and use a slightly off-register or more specific word instead. Not fancy — just less predictable. The goal is to break next-token predictability, which is what perplexity-based detectors score.
+I. LEXICAL SURPRISE (HARD REQUIREMENT — most important detector lever): in every paragraph, pick at least THREE spots where AI would default to the safe common word and replace each with a slightly off-register, more specific, or less-predictable equivalent that keeps the meaning intact. Skip the most common synonym; pick the second or third choice. This applies to plain verbs, modifiers, and connectives — never to facts, names, numbers, dates, or technical terms. Perplexity-based detectors (ZeroGPT, GPTZero, Originality, Copyleaks) score next-token predictability directly, so this is the single biggest lever for pushing the score below 5%. If your output uses only common, AI-expected words, you have failed regardless of how natural it reads.
 
 STEP 3: BANNED OUTPUT PATTERNS
 

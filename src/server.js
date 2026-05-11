@@ -8,6 +8,8 @@ const multer = require("multer");
 const crypto = require("crypto");
 
 const config = require("./config");
+const { connectDb } = require("./db");
+const authRoutes = require("./routes/auth");
 const { extractTextFromFile } = require("./services/extractText");
 const { humanizeText } = require("./services/openrouter");
 const { checkGrammar } = require("./services/grammar");
@@ -55,6 +57,8 @@ app.use((req, res, next) => {
   console.log(`[request] ${req.method} ${req.originalUrl}`);
   next();
 });
+
+app.use("/api/auth", authRoutes);
 
 function extractUserApiKey(req) {
   const raw = req.get("X-User-OpenRouter-Key");
@@ -455,6 +459,20 @@ app.use((error, req, res, next) => {
 async function start() {
   await fs.mkdir(config.uploadDir, { recursive: true });
   await fs.mkdir(config.generatedDir, { recursive: true });
+
+  if (config.mongodbUri) {
+    try {
+      await connectDb();
+    } catch (error) {
+      console.error(
+        "[start] MongoDB connection failed. Auth routes will not work until this is fixed."
+      );
+    }
+  } else {
+    console.warn(
+      "[start] MONGODB_URI not set. Auth routes (/api/auth/*) will fail until you add it to backend/.env."
+    );
+  }
 
   app.listen(config.port, () => {
     console.log(`Huminzer backend running on http://localhost:${config.port}`);
