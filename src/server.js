@@ -361,6 +361,34 @@ app.post("/api/humanize-text", async (req, res) => {
       voice,
     });
 
+    // Generate downloadable DOCX + PDF on disk so the client's download buttons
+    // work. Skipped silently if the filesystem isn't writable (e.g. Vercel) —
+    // the client still gets the rewritten text in the response either way.
+    const downloadId = crypto.randomUUID();
+    const docxFileName = "pasted_text_humanized.docx";
+    const pdfFileName = "pasted_text_humanized.pdf";
+    let downloadUrl = "";
+    let pdfDownloadUrl = "";
+    try {
+      await fs.mkdir(config.generatedDir, { recursive: true });
+      const docxFilePath = path.join(
+        config.generatedDir,
+        `${downloadId}.docx`,
+      );
+      const pdfFilePath = path.join(config.generatedDir, `${downloadId}.pdf`);
+      await Promise.all([
+        writeDocxFile({ filePath: docxFilePath, text: rewrittenText }),
+        writePdfFile({ filePath: pdfFilePath, text: rewrittenText }),
+      ]);
+      downloadUrl = `/api/download/${downloadId}.docx?name=${encodeURIComponent(docxFileName)}`;
+      pdfDownloadUrl = `/api/download/${downloadId}.pdf?name=${encodeURIComponent(pdfFileName)}`;
+    } catch (exportError) {
+      console.warn(
+        `[humanize-text] Job ${jobId} export skipped:`,
+        exportError.message,
+      );
+    }
+
     res.status(200).json({
       jobId,
       status: "completed",
@@ -374,9 +402,9 @@ app.post("/api/humanize-text", async (req, res) => {
         fileName: "Pasted text",
         originalText: rawText,
         rewrittenText,
-        outputFileName: "rewritten.docx",
-        downloadUrl: "",
-        pdfDownloadUrl: "",
+        outputFileName: docxFileName,
+        downloadUrl,
+        pdfDownloadUrl,
       },
     });
   } catch (error) {
