@@ -349,27 +349,50 @@ app.post("/api/humanize-text", async (req, res) => {
 
   const userApiKey = extractUserApiKey(req);
   const voice = parseVoice(req.body?.voice);
+  const jobId = crypto.randomUUID();
 
-  const job = createJob({
-    sourceName: "Pasted text",
-    sourceType: "text",
-  });
+  console.log(
+    `[text] Job ${jobId} (sync) received ${rawText.length} characters`,
+  );
 
-  console.log(`[text] Job ${job.jobId} received ${rawText.length} characters`);
-  runHumanizeJob({
-    jobId: job.jobId,
-    originalText: rawText,
-    sourceName: "Pasted text",
-    outputBaseName: "pasted_text",
-    userApiKey,
-    voice,
-  });
+  try {
+    const rewrittenText = await humanizeText(rawText, {
+      userApiKey,
+      voice,
+    });
 
-  res.status(202).json({
-    jobId: job.jobId,
-    status: "queued",
-    message: "Preparing rewrite",
-  });
+    res.status(200).json({
+      jobId,
+      status: "completed",
+      stage: "completed",
+      message: "Ready",
+      sourceName: "Pasted text",
+      sourceType: "text",
+      currentChunk: 0,
+      totalChunks: 0,
+      result: {
+        fileName: "Pasted text",
+        originalText: rawText,
+        rewrittenText,
+        outputFileName: "rewritten.docx",
+        downloadUrl: "",
+        pdfDownloadUrl: "",
+      },
+    });
+  } catch (error) {
+    console.error(`[humanize-text] Job ${jobId} failed:`, error.message);
+    res.status(500).json({
+      jobId,
+      status: "failed",
+      stage: "failed",
+      message: error.message || "Failed to process the request.",
+      error: error.message || "Failed to process the request.",
+      sourceName: "Pasted text",
+      sourceType: "text",
+      currentChunk: 0,
+      totalChunks: 0,
+    });
+  }
 });
 
 app.post("/api/grammar-check", async (req, res) => {
