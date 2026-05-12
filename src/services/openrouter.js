@@ -94,7 +94,6 @@ const focusAngles = [
   "EXTRA EMPHASIS THIS REWRITE: maximize sentence-length variance. Force at least one sentence under 5 words and at least one over 22 words. Place them so the rhythm jumps.",
   "EXTRA EMPHASIS THIS REWRITE: inject exactly one short personal hedge somewhere natural ('honestly', 'I think', 'to me', 'in my experience'). Make it feel offhand, not performative.",
   "EXTRA EMPHASIS THIS REWRITE: start at least two sentences with a conjunction (And, But, So, Plus). Make the writer sound like they're thinking out loud, not delivering a polished essay.",
-  "EXTRA EMPHASIS THIS REWRITE: include one short parenthetical aside that reads like a spontaneous side comment. Keep it casual and brief.",
   "EXTRA EMPHASIS THIS REWRITE: do not end with a summary sentence. End on a specific concrete detail, a fragment, or a trailing thought. The closer should feel abrupt, not tidy.",
   "EXTRA EMPHASIS THIS REWRITE: include one rhetorical question somewhere natural. Use it to break the rhythm, not to introduce a new idea.",
   "EXTRA EMPHASIS THIS REWRITE: increase fragment usage. Include at least two sentence fragments (2-5 words, no main verb), placed where they break a smooth rhythm.",
